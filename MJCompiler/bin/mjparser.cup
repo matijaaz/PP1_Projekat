@@ -1,0 +1,250 @@
+
+
+package rs.ac.bg.etf.pp1;
+
+import java_cup.runtime.*;
+import org.apache.log4j.*;
+import rs.ac.bg.etf.pp1.ast.*;
+
+parser code {:
+	
+	boolean errorDetected = false;
+	Logger log = Logger.getLogger(getClass());
+   
+    // slede redefinisani metodi za prijavu gresaka radi izmene teksta poruke
+     
+    public void report_fatal_error(String message, Object info) throws java.lang.Exception {
+      done_parsing();
+      report_error(message, info);
+    }
+  
+    public void syntax_error(Symbol cur_token) {
+        report_error("\nSintaksna greska", cur_token);
+    }
+  
+    public void unrecovered_syntax_error(Symbol cur_token) throws java.lang.Exception {
+        report_fatal_error("Fatalna greska, parsiranje se ne moze nastaviti", cur_token);
+    }
+
+    public void report_error(String message, Object info) {
+    	errorDetected = true;
+    	StringBuilder msg = new StringBuilder(message); 
+    	if (info instanceof Symbol)
+            msg.append (" na liniji ").append(((Symbol)info).left);
+        log.error(msg.toString());
+    }
+
+
+:}
+
+
+scan with {:
+	Symbol s = this.getScanner().next_token();
+	if (s != null && s.value != null) 
+		log.info(s.toString() + " " + s.value.toString());
+	return s;
+:}
+
+
+terminal PROG, LBRACE, RBRACE, SEMI, LPAREN, RPAREN, EQUAL, RETURN, PLUS, COMMA, PRINT, VOID, RANGE, HASHTAG;
+terminal MULT, MINUS, DIV, MOD, EQ_TO, NEQ_TO, GR,GREQ, LE, LEQ, AND, OR, INC, DEC, COLON;
+terminal LBRACKET, RBRACKET, DOT;
+terminal Integer NUMCONST;
+terminal Character CHARCONST;
+terminal String IDENT, BOOLCONST;
+terminal IF, ELSE, CONST, NEW, READ, STATIC;
+
+nonterminal ConstVarDeclList, ConstDecl, Addop, Mulop, ConstDeclList, ConstDeclParam, FormPar, Print;
+nonterminal VarDecl, VarDeclParam, MethodDeclList, MethodDecl, VarDeclCollection, NumberConstPrint;
+nonterminal FormPars, VarDeclList, StatementList, Statement;
+nonterminal ErrorProneGlobalVarDecl, ErrorGlobalVarDecl, ErrorProneGlobalVar, GlobalVarDeclList, Op;
+nonterminal rs.etf.pp1.symboltable.concepts.Obj ProgramName, Program, MethodTypeName, MethodName, Designator, DesignatorStatement, ArrIdent;
+nonterminal rs.etf.pp1.symboltable.concepts.Struct Type, Factor, Expr, Term, ErrorProneExpr, TermEnd;
+
+Program ::=(Program) PROG ProgramName ConstVarDeclList LBRACE MethodDeclList RBRACE;
+ProgramName ::= (ProgramName)IDENT:name;
+
+
+ConstVarDeclList ::=(ConstVarDeclLists) ConstVarDeclList ConstDecl
+				  |
+				  (SingleConstVarDeclList) ConstVarDeclList ErrorProneGlobalVarDecl
+				  |
+				  (NoConstVarDeclList)/* epsilon */
+				  ;
+
+ErrorProneGlobalVarDecl ::= Type GlobalVarDeclList SEMI
+						 |
+						 ErrorGlobalVarDecl SEMI
+						 ;
+						 
+ErrorGlobalVarDecl    ::= error
+                          {:
+                             Symbol symbol = (Symbol)(CUP$MJParser$stack.elementAt(CUP$MJParser$top));
+                			 parser.report_error("Syntax error (line: " + symbol.left + " ) : Invalid declaration. Parsing continued.", null);
+                          :};
+
+GlobalVarDeclList ::= ErrorProneGlobalVar COMMA GlobalVarDeclList
+				   |
+				   ErrorProneGlobalVar
+				   ;
+				   
+ErrorProneGlobalVar ::= (ErrorProneGlobalVarArray) IDENT LBRACKET RBRACKET
+                       |
+                       (ErrorProneGlobalVarType) IDENT
+                       |  
+                       error
+                          {:
+                             Symbol symbol = (Symbol)(CUP$MJParser$stack.elementAt(CUP$MJParser$top));
+                             parser.report_error("Syntax error (line: " + symbol.left + " ) : Invalid global variable declaration. Parsing continued.", null);
+                          :};
+
+ConstDecl ::= (ConstDecl)CONST Type ConstDeclList SEMI;
+		  
+ConstDeclList ::= (ConstDeclarations)ConstDeclParam COMMA ConstDeclList
+			   |
+			   (SingleConst)ConstDeclParam
+			   ;		   
+
+ConstDeclParam ::=(ConstDeclNum)IDENT EQUAL NUMCONST
+				|
+				(ConstDeclBool)IDENT:ident EQUAL BOOLCONST:bool
+				|
+				(ConstDeclChar)IDENT EQUAL CHARCONST
+				;
+				
+Type ::=(Type)IDENT; 
+
+VarDeclParam ::= (VarDeclParamArray)IDENT LBRACKET RBRACKET
+		 |
+		 (VarDeclParamElement)IDENT
+		 ;
+		 
+VarDecl ::= Type VarDeclList SEMI
+		;
+		 
+		  
+VarDeclList ::= VarDeclParam COMMA VarDeclList
+			 |
+			 VarDeclParam
+			 ;
+		
+MethodDeclList ::= MethodDeclList MethodDecl 
+				|
+				 /* epsilon */
+				 ;
+				 
+MethodDecl ::= (MethodDeclHasReturn) MethodTypeName LPAREN FormPars RPAREN VarDeclCollection LBRACE StatementList RBRACE			 
+			|
+			(MethodDeclNoReturn)VOID MethodName LPAREN FormPars RPAREN VarDeclCollection LBRACE StatementList RBRACE
+			;
+
+MethodTypeName ::= (MethodTypeName)Type:type IDENT:ident;
+MethodName ::= (MethodName)IDENT;
+
+VarDeclCollection ::= VarDeclCollection VarDecl
+				   |
+				   /* epsilon */
+				   ;			 
+
+FormPars ::= (FormParameters) FormPars COMMA FormPar
+		  |
+		  (SingleFormPars) FormPar
+		  ;
+
+FormPar ::=(FormParElement)Type IDENT
+		 |
+		 (FormParElementArray)Type IDENT LBRACKET RBRACKET
+		 |
+		 (NoFormPar)/* epsilon */
+	     ;
+		 
+StatementList ::=(StatementCollection) StatementList Statement
+			   |
+			   (NoStatementCollection) /* epsilon */
+		       ;	
+
+Statement ::= (StatementDesignator) DesignatorStatement SEMI
+		   |
+		   (StatementRead) READ LPAREN Designator RPAREN SEMI
+		   |
+		   (StatementPrintExpr) Print LPAREN Expr RPAREN SEMI
+		   |
+		   (StatementPrintExprComma) Print LPAREN Expr COMMA NumberConstPrint RPAREN SEMI
+		   ;
+
+Print ::= (Print)PRINT;
+NumberConstPrint ::= (NumberConstPrint)NUMCONST;
+
+DesignatorStatement ::= (DStatementDesignator) Designator EQUAL ErrorProneExpr
+					 |
+					 (DStatementInc)Designator INC
+					 |
+					 (DstatementDec)Designator DEC
+					 |
+					 (ErrorAssignment)error
+ 				{:
+          			Symbol symbol = (Symbol)(CUP$MJParser$stack.elementAt(CUP$MJParser$top));
+          			parser.report_error("Syntax error (line: " + symbol.left + " ) : Invalid assignment statement. Parsing continued.", null);
+          		:}
+					 ;
+					 
+Expr ::=(TermExpr)Term
+      |(MinusTermExpr) MINUS Term
+      |(AddExpr) Expr Addop Term
+      ;
+
+ErrorProneExpr ::= (RExpr)Expr
+				|
+				(ErrorExpr)error
+ 				{:
+          			Symbol symbol = (Symbol)(CUP$MJParser$stack.elementAt(CUP$MJParser$top));
+          			parser.report_error("Syntax error (line: " + symbol.left + " ) : Invalid assignment statement. Parsing continued.", null);
+          		:}
+        		;
+ 				
+Addop ::= (Plus) PLUS
+	   |
+	   (Minus) MINUS
+	   ;
+
+Term ::= (AddTerm)Term Mulop TermEnd
+	  |
+	  (FactorTerm)TermEnd
+	  ;
+
+TermEnd ::= (TermEnd)TermEnd Op Factor
+         |
+         Factor
+		;
+
+Op ::= HASHTAG;
+
+Mulop ::= (Mult)MULT
+	   |
+	   (Div)DIV
+	   |
+	   (Mod)MOD
+	   ;
+
+Factor ::= (NumConst)NUMCONST
+	    |
+	    (CharConst)CHARCONST
+	    |
+	    (ExprParen)LPAREN Expr RPAREN
+	    |
+	    (BoolConst)BOOLCONST
+	    |
+	    (DesignatorFactor)Designator
+	    |
+	    (New)NEW Type LBRACKET Expr RBRACKET
+	    |
+	    (Range)RANGE LPAREN Expr RPAREN
+	    ;
+
+Designator ::= (DesignatorIdent)IDENT
+			|
+			(DesignatorArray) ArrIdent LBRACKET Expr RBRACKET
+			;
+
+ArrIdent ::= (ArrIdent) IDENT;
+			 
